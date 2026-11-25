@@ -13,7 +13,7 @@ from pathlib import Path
 from transformers import pipeline
 
 DATA = Path(__file__).parent / "data"
-MAX_SENTENCES = 400  # evenly sampled when a filing is longer
+MAX_SENTENCES = 200  # evenly sampled when a filing is longer
 
 _pipe = None
 
@@ -50,17 +50,26 @@ def score_text(text: str) -> dict:
 
 
 def main() -> None:
-    rows = []
-    for path in sorted(DATA.glob("*_*.txt")):
-        ticker, acc = path.stem.split("_", 1)
-        s = score_text(path.read_text())
-        rows.append({"ticker": ticker, "accession": acc, **s})
-        print(ticker, acc[:10], s)
     out = DATA / "scores.csv"
-    with out.open("w", newline="") as fh:
+    done = set()
+    if out.exists():
+        import csv as _csv
+        for r in _csv.DictReader(out.open()):
+            done.add(r["accession"])
+    import csv
+    fresh = out.exists()
+    with out.open("a", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=["ticker", "accession", "n_sentences", "sentiment", "pos", "neg"])
-        w.writeheader()
-        w.writerows(rows)
+        if not fresh:
+            w.writeheader()
+        for path in sorted(DATA.glob("*_*.txt")):
+            ticker, acc = path.stem.split("_", 1)
+            if acc in done:
+                continue
+            s = score_text(path.read_text())
+            w.writerow({"ticker": ticker, "accession": acc, **s})
+            fh.flush()
+            print(ticker, acc[:10], s, flush=True)
     print("->", out)
 
 
